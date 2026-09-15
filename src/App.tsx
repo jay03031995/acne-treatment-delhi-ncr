@@ -83,12 +83,29 @@ function Section({
   );
 }
 
+function getEnvValue(value: string | undefined) {
+  return value?.trim() || "";
+}
+
 const emailjsConfig = {
-  serviceId: import.meta.env.VITE_EMAILJS_SERVICE_ID as string | undefined,
-  clinicTemplateId: import.meta.env.VITE_EMAILJS_CLINIC_TEMPLATE_ID as string | undefined,
-  thankYouTemplateId: import.meta.env.VITE_EMAILJS_THANKYOU_TEMPLATE_ID as string | undefined,
-  publicKey: import.meta.env.VITE_EMAILJS_PUBLIC_KEY as string | undefined,
+  serviceId: getEnvValue(import.meta.env.VITE_EMAILJS_SERVICE_ID),
+  clinicTemplateId: getEnvValue(import.meta.env.VITE_EMAILJS_CLINIC_TEMPLATE_ID),
+  thankYouTemplateId: getEnvValue(import.meta.env.VITE_EMAILJS_THANKYOU_TEMPLATE_ID),
+  publicKey: getEnvValue(import.meta.env.VITE_EMAILJS_PUBLIC_KEY),
 };
+
+function assertEmailJsConfig() {
+  if (
+    !emailjsConfig.serviceId ||
+    !emailjsConfig.clinicTemplateId ||
+    !emailjsConfig.thankYouTemplateId ||
+    !emailjsConfig.publicKey
+  ) {
+    throw new Error(
+      "Email service is not configured yet. Please check the Vercel environment variables and redeploy.",
+    );
+  }
+}
 
 async function sendEmailJs(templateId: string, templateParams: Record<string, string>) {
   const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
@@ -790,7 +807,7 @@ function Booking() {
         </div>
 
         <form
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             setSending(true);
             setStatus("idle");
@@ -807,47 +824,42 @@ function Booking() {
 
             const templateParams = {
               name: fullName,
+              from_name: fullName,
               phone,
               email,
+              from_email: email,
+              user_email: email,
               to_email: clinic.email,
+              clinic_email: clinic.email,
               concern,
               message,
               clinic_name: clinic.name,
               reply_to: email,
             };
 
-            (async () => {
-              try {
-                if (
-                  !emailjsConfig.serviceId ||
-                  !emailjsConfig.clinicTemplateId ||
-                  !emailjsConfig.thankYouTemplateId ||
-                  !emailjsConfig.publicKey
-                ) {
-                  throw new Error(
-                    "Missing EmailJS config. Set VITE_EMAILJS_SERVICE_ID, VITE_EMAILJS_CLINIC_TEMPLATE_ID, VITE_EMAILJS_THANKYOU_TEMPLATE_ID, and VITE_EMAILJS_PUBLIC_KEY.",
-                  );
-                }
+            try {
+              assertEmailJsConfig();
 
-                await sendEmailJs(emailjsConfig.clinicTemplateId, {
-                  ...templateParams,
-                  to_email: clinic.email,
-                });
-                await pause(1000);
-                await sendEmailJs(emailjsConfig.thankYouTemplateId, {
-                  ...templateParams,
-                  to_email: email,
-                });
+              await sendEmailJs(emailjsConfig.clinicTemplateId, {
+                ...templateParams,
+                to_email: clinic.email,
+                to_name: clinic.name,
+              });
+              await pause(1000);
+              await sendEmailJs(emailjsConfig.thankYouTemplateId, {
+                ...templateParams,
+                to_email: email,
+                to_name: fullName,
+              });
 
-                form.reset();
-                setStatus("sent");
-              } catch (err) {
-                setStatus("error");
-                setError(err instanceof Error ? err.message : "Unable to send email.");
-              } finally {
-                setSending(false);
-              }
-            })();
+              form.reset();
+              setStatus("sent");
+            } catch (err) {
+              setStatus("error");
+              setError(err instanceof Error ? err.message : "Unable to send email.");
+            } finally {
+              setSending(false);
+            }
           }}
           className="rounded-3xl border border-mint-100/12 bg-mint-100/[0.06] p-7 md:p-9"
         >
